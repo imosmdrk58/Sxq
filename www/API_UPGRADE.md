@@ -37,9 +37,17 @@ The integration uses:
 ## Troubleshooting
 
 If you encounter any issues:
-1. Make sure PHP's curl extension is enabled
+1. PHP's curl extension: 
+   - The code includes a fallback to `file_get_contents()` if curl is not available
+   - If you want to use curl, you can enable it in php.ini by uncommenting `;extension=curl`
+   - On XAMPP: Open php.ini (usually in C:\xampp\php\php.ini), find the line `;extension=curl` and remove the semicolon
+   - On WAMP: Go to WAMP icon > PHP > PHP Extensions > Check the "curl" option
+   - Restart your web server after making changes
+
 2. Check database connection settings in `config.php`
-3. Be patient with API responses as they might be rate-limited
+
+3. Be patient with API responses as they might be rate-limited (the Jikan API limits requests)
+
 4. Verify that the database upgrade was successful by checking for the new columns
 
 For any further questions or issues, please refer to the project documentation or contact support.

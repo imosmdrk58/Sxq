@@ -13,8 +13,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $notes = isset($_POST['notes']) ? trim($_POST['notes']) : '';
     
     $pdo->prepare("
-      INSERT INTO bookmarks (user_id, manga_title, last_chapter, notes)
-      VALUES (?,?,?,?)
+      INSERT INTO bookmarks (user_id, manga_title, last_chapter, notes, cover_image, description, api_id, api_source)
+      VALUES (?,?,?,?,NULL,NULL,NULL,'manual')
       ON DUPLICATE KEY UPDATE
         last_chapter=VALUES(last_chapter),
         notes=VALUES(notes),
@@ -118,7 +118,12 @@ $stats = $statsStmt->fetch();
                    style="width: 100%; height: 180px; object-fit: cover; border-radius: 6px; margin-bottom: 1rem;">
             <?php endif; ?>
             
-            <div class="manga-title"><?= htmlspecialchars($r['manga_title']) ?></div>
+            <div class="manga-title">
+              <?= htmlspecialchars($r['manga_title']) ?>
+              <?php if(!empty($r['api_source'])): ?>
+                <span class="api-badge <?= htmlspecialchars($r['api_source']) ?>"><?= htmlspecialchars(ucfirst($r['api_source'])) ?></span>
+              <?php endif; ?>
+            </div>
             <div class="manga-chapter">Chapter <?= htmlspecialchars($r['last_chapter']) ?></div>
             <div class="manga-date">Updated: <?= date('M j, Y', strtotime($r['updated_at'])) ?></div>
             

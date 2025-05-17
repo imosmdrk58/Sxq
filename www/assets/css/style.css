@@ -239,6 +239,33 @@ form button:hover {
   color: var(--success);
 }
 
+/* API Source Badges */
+.api-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  font-weight: normal;
+}
+.api-badge.anilist {
+  background-color: #02a9ff;
+  color: white;
+}
+.api-badge.jikan {
+  background-color: #2e51a2;
+  color: white;
+}
+.api-badge.mock {
+  background-color: #ff6b6b;
+  color: white;
+}
+.api-badge.manual {
+  background-color: #6c757d;
+  color: white;
+}
+
 /* Guestbook comments */
 .comment-list {
   margin-top: 2.5rem;
