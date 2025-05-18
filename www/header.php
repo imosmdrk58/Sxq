@@ -1,7 +1,6 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-  session_start();
-}
+// Session is already started in config.php which is included in every page
+// No need to start it again here
 ?>
 <header>
   <div class="container">
@@ -22,11 +21,7 @@ if (session_status() === PHP_SESSION_NONE) {
             <i class="fas fa-user-circle"></i> 
             <?= htmlspecialchars($_SESSION['username']) ?>
             <i class="fas fa-caret-down" style="font-size: 0.8rem;"></i>
-          </a>
-          <div style="position: absolute; top: 100%; right: 0; background: white; border-radius: 6px; box-shadow: 0 2px 15px rgba(0,0,0,0.15); min-width: 160px; margin-top: 0.5rem; display: none; z-index: 100;" class="dropdown-menu">
-            <a href="manga.php" style="color: #333; padding: 0.75rem 1rem; display: block; border-bottom: 1px solid #eee;">
-              <i class="fas fa-book"></i> My Collection
-            </a>
+          </a>          <div style="position: absolute; top: 100%; right: 0; background: white; border-radius: 6px; box-shadow: 0 2px 15px rgba(0,0,0,0.15); min-width: 160px; margin-top: 0.5rem; display: none; z-index: 100;" class="dropdown-menu">
             <a href="logout.php" style="color: #333; padding: 0.75rem 1rem; display: block;">
               <i class="fas fa-sign-out-alt"></i> Sign Out
             </a>
@@ -35,21 +30,31 @@ if (session_status() === PHP_SESSION_NONE) {
       <?php endif; ?>
     </nav>
   </div>
-  
-  <script>
+    <script>
     // Simple dropdown menu
     document.addEventListener('DOMContentLoaded', function() {
       const userMenu = document.querySelector('.user-menu');
       if (userMenu) {
-        userMenu.addEventListener('click', function(e) {
+        // Handle opening/closing dropdown only when clicking the profile toggle
+        const menuToggle = userMenu.querySelector('a:first-child');
+        menuToggle.addEventListener('click', function(e) {
           e.preventDefault();
-          const dropdown = this.querySelector('.dropdown-menu');
+          const dropdown = userMenu.querySelector('.dropdown-menu');
           if (dropdown.style.display === 'block') {
             dropdown.style.display = 'none';
           } else {
             dropdown.style.display = 'block';
           }
         });
+          // Don't prevent default for the logout link itself
+        const logoutLink = userMenu.querySelector('.dropdown-menu a');
+        if (logoutLink) {
+          logoutLink.addEventListener('click', function(e) {
+            // Use direct navigation instead of just allowing default
+            e.preventDefault();
+            window.location.href = this.href;
+          });
+        }
         
         // Close dropdown when clicking outside
         document.addEventListener('click', function(e) {

@@ -15,10 +15,21 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   $stmt->execute([$u]);
   $user = $stmt->fetch();
   if ($user && password_verify($p,$user['password_hash'])) {
-    session_regenerate_id();
-    $_SESSION['user_id']   = $user['id'];
-    $_SESSION['username']  = $user['username'];
-    header('Location: manga.php');
+    // Clear any existing session data
+    $_SESSION = array();
+    
+    // Regenerate session ID for security
+    session_regenerate_id(true);
+    
+    // Set session variables
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['username'] = $user['username'];
+    
+    // Handle redirection
+    $redirect = isset($_SESSION['redirect_after_login']) ? $_SESSION['redirect_after_login'] : 'manga.php';
+    unset($_SESSION['redirect_after_login']);
+    
+    header('Location: ' . $redirect);
     exit;
   } else {
     $error = "Invalid credentials";

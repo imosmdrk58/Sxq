@@ -1,331 +1,175 @@
 <?php
+// browse.php – Eenvoudige manga-zoekpagina met Jikan API
 require_once __DIR__.'/config/config.php';
-require_once __DIR__.'/api/manga_api.php';
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-// Handle search
-$searchResults = [];
-$searchError = '';
-$searchTerm = '';
-$apiSource = isset($_GET['api_source']) ? $_GET['api_source'] : 'auto';
+// Ophalen zoekterm en limiet uit de URL\​
+$query = isset($_GET['q']) ? trim($_GET['q']) : '';
+$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 5;
 
-if (isset($_GET['search']) && !empty($_GET['search'])) {
-  $searchTerm = trim($_GET['search']);
-  
-  // Handle API source selection
-  if ($apiSource === 'anilist') {
-    // Force using Anilist API
-    define('USE_RAPIDAPI', true);
-    $results = searchMangaByTitleAnilist($searchTerm);
-  } else if ($apiSource === 'jikan') {
-    // Force using Jikan API
-    if (!defined('USE_RAPIDAPI')) {
-      define('USE_RAPIDAPI', false);
-    }
-    // URL encode the title for the API request
-    $encodedTitle = urlencode($searchTerm);
-    
-    // Construct the API URL for searching manga
-    $apiUrl = "https://api.jikan.moe/v4/manga?q={$encodedTitle}&limit=10";
-    
-    // Try to fetch from Jikan directly
-    $jikanResponse = null;
-    $apiError = null;
-    
-    if (function_exists('curl_init')) {
-      // Use curl code...
-      $ch = curl_init();
-      curl_setopt($ch, CURLOPT_URL, $apiUrl);
-      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-      curl_setopt($ch, CURLOPT_USERAGENT, 'MangaTracker/1.0');
-      
-      $jikanResponse = curl_exec($ch);
-      
-      if (curl_errno($ch)) {
-        $apiError = 'cURL error: ' . curl_error($ch);
-      }
-      
-      curl_close($ch);
-    } else if (ini_get('allow_url_fopen')) {
-      // Use file_get_contents fallback...
-      $opts = [
+// Initialiseer data en error variabelen
+$data = [];
+$error = '';
+
+if ($query !== '') {
+    // Bouw de API-URL: alleen "manga", SFW, gesorteerd op chronologische mal_id
+    $url = sprintf(
+        "https://api.jikan.moe/v4/manga?q=%s&limit=%d&type=manga&sfw&order_by=mal_id&sort=asc",
+        urlencode($query),
+        $limit
+    );
+
+    // HTTP-context voor file_get_contents
+    $options = [
         'http' => [
-          'method' => 'GET',
-          'header' => ['User-Agent: MangaTracker/1.0'],
-          'timeout' => 30
+            'method'  => 'GET',
+            'header'  => "User-Agent: MangaBrowser/1.0\r\n",
+            'timeout' => 10
+        ],
+        'ssl' => [
+            'verify_peer'      => false,
+            'verify_peer_name' => false
         ]
-      ];
-      
-      $context = stream_context_create($opts);
-      $jikanResponse = @file_get_contents($apiUrl, false, $context);
-      
-      if ($jikanResponse === false) {
-        $apiError = 'file_get_contents failed';
-      }
-    }
-    
-    if ($jikanResponse) {
-      $results = json_decode($jikanResponse, true);
-      // Mark the source
-      if (isset($results['data']) && is_array($results['data'])) {
-        foreach ($results['data'] as &$manga) {
-          $manga['api_source'] = 'jikan';
-        }
-      }
-    } else {
-      // If failed, use mock data
-      $results = generateMockMangaData($searchTerm);
-      $results['api_errors'] = ['Failed to fetch from Jikan: ' . $apiError];
-    }
-  } else {
-    // Auto mode - try all APIs in sequence
-    $results = searchMangaByTitle($searchTerm);
-  }
-  
-  if (isset($results['error'])) {
-    $searchError = $results['error'];
-  } else {
-    $searchResults = isset($results['data']) ? $results['data'] : [];
-  }
-  
-  // Display API errors if any
-  if (isset($results['api_errors']) && !empty($results['api_errors'])) {
-    $searchError = 'API Errors: ' . implode(', ', $results['api_errors']);
-  }
-}
+    ];
+    $ctx = stream_context_create($options);
 
-// Handle adding manga from API to bookmarks
-if (isset($_POST['action']) && $_POST['action'] === 'add_from_api' && !empty($_SESSION['user_id'])) {
-  $title = isset($_POST['title']) ? $_POST['title'] : '';
-  $chapter = isset($_POST['chapter']) ? $_POST['chapter'] : '1';
-  $image = isset($_POST['image']) ? $_POST['image'] : '';
-  $description = isset($_POST['description']) ? $_POST['description'] : '';
-  $apiId = isset($_POST['api_id']) ? $_POST['api_id'] : '';
-  $apiSource = isset($_POST['api_source']) ? $_POST['api_source'] : '';
-  
-  if (!empty($title)) {
-    // Store in bookmarks
-    $stmt = $pdo->prepare("
-      INSERT INTO bookmarks (user_id, manga_title, last_chapter, notes, cover_image, description, api_id, api_source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        last_chapter = VALUES(last_chapter),
-        updated_at = CURRENT_TIMESTAMP
-    ");
+    // Ophalen en decoderen
+    $resp = @file_get_contents($url, false, $ctx);
+    if ($resp === false) {
+        $error = 'Kon de API niet bereiken of er is een fout opgetreden.';
+    } else {
+        $json = json_decode($resp, true);
+        $data = $json['data'] ?? [];
+
+        // Dubbele filter: SFW is al toegepast, maar sluit expliciet "Hentai" genres uit
+        $data = array_filter($data, function($m) {
+            foreach ($m['genres'] ?? [] as $genre) {
+                if (strtolower($genre['name']) === 'hentai') {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }
+}
+// Handle bookmark submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'bookmark') {
+    if (empty($_SESSION['user_id'])) {
+        $_SESSION['redirect_after_login'] = 'browse.php?q=' . urlencode($query) . '&limit=' . $limit;
+        header('Location: login.php');
+        exit;
+    }
+
+    // Extract manga details
+    $title = $_POST['title'] ?? '';
+    $chapter = $_POST['chapters'] ?? '0';
+    $cover = $_POST['cover'] ?? '';
+    $description = $_POST['synopsis'] ?? '';
+    $api_id = $_POST['api_id'] ?? '';
+    $max_chapters = isset($_POST['max_chapters']) && !empty($_POST['max_chapters']) ? (int)$_POST['max_chapters'] : null;
     
-    $notes = "Added from " . ($apiSource ? ucfirst($apiSource) : "manga database") . ".";
-    $stmt->execute([$_SESSION['user_id'], $title, $chapter, $notes, $image, $description, $apiId, $apiSource]);
-    
-    // Log the read
-    $pdo->prepare("
-      INSERT INTO reads_log (user_id, manga_title, chapter, read_at)
-      VALUES (?, ?, ?, NOW())
-    ")->execute([$_SESSION['user_id'], $title, $chapter]);
-    
-    // Redirect to prevent form resubmission
-    header('Location: manga.php?added=1');
-    exit;
-  }
+    // Add to bookmarks
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO bookmarks (user_id, manga_title, last_chapter, max_chapters, notes, cover_image, description, api_id, api_source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'jikan')
+            ON DUPLICATE KEY UPDATE 
+                last_chapter = VALUES(last_chapter),
+                max_chapters = VALUES(max_chapters),
+                updated_at = CURRENT_TIMESTAMP
+        ");
+        $stmt->execute([
+            $_SESSION['user_id'], 
+            $title, 
+            $chapter,
+            $max_chapters,
+            '',  // Notes empty by default
+            $cover,
+            $description,
+            $api_id
+        ]);
+        
+        $success_message = "'" . htmlspecialchars($title) . "' toegevoegd aan je collectie.";
+    } catch (PDOException $e) {
+        $error = "Er is een fout opgetreden bij het opslaan: " . $e->getMessage();
+    }
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Browse Manga – Manga Tracker</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Manga zoeken - Manga Tracker</title>  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <link rel="stylesheet" href="assets/css/style.css">
-  <style>
-    .manga-result {
-      display: flex;
-      margin-bottom: 2rem;
-      background: white;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
-    }
-    .manga-cover {
-      width: 120px;
-      height: 180px;
-      object-fit: cover;
-    }
-    .manga-info {
-      padding: 1.2rem;
-      flex: 1;
-    }
-    .manga-title {
-      font-size: 1.4rem;
-      margin-bottom: 0.5rem;
-      color: var(--dark);
-    }
-    .manga-meta {
-      display: flex;
-      gap: 1.5rem;
-      margin-bottom: 0.8rem;
-      color: var(--gray);
-      font-size: 0.9rem;
-    }    .manga-description {
-      color: var(--gray);
-      margin-bottom: 1rem;
-      max-height: 4.8em; /* Approximately 3 lines of text */
-      overflow: hidden;
-      position: relative;
-      text-overflow: ellipsis;
-      /* For browsers that support it */
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-    }
-    .manga-genres {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-    }    .manga-genre {
-      background: rgba(67, 97, 238, 0.1);
-      color: var(--primary);
-      padding: 0.3rem 0.6rem;
-      border-radius: 30px;
-      font-size: 0.8rem;
-    }
-    .api-badge {
-      display: inline-block;
-      font-size: 0.7rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      margin-left: 0.5rem;
-      vertical-align: middle;
-      font-weight: normal;
-    }
-    .api-badge.anilist {
-      background-color: #02a9ff;
-      color: white;
-    }
-    .api-badge.jikan {
-      background-color: #2e51a2;
-      color: white;
-    }
-    .api-badge.mock {
-      background-color: #ff6b6b;
-      color: white;
-    }
-    .manga-actions {
-      margin-top: auto;
-    }
-    @media (max-width: 768px) {
-      .manga-result {
-        flex-direction: column;
-      }
-      .manga-cover {
-        width: 100%;
-        height: 200px;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="assets/css/style-fixes.css">
 </head>
 <body>
   <?php include __DIR__.'/header.php'; ?>
-  
-  <div class="container">
-    <h1>Browse Manga Database</h1>
-    <p>Search our extensive database of manga titles and add them to your collection!</p>
-      <form method="get" class="search-form">
-      <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
-        <div style="display: flex; gap: 1rem;">
-          <input type="text" name="search" placeholder="Search for manga titles..." value="<?= htmlspecialchars($searchTerm) ?>" style="flex: 1;" required>
-          <button type="submit" class="btn"><i class="fas fa-search"></i> Search</button>
-        </div>
-        <div style="display: flex; gap: 1rem; align-items: center;">
-          <label style="font-size: 0.9rem; color: #666;">API Source:</label>
-          <div style="display: flex; gap: 0.5rem;">
-            <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
-              <input type="radio" name="api_source" value="auto" <?= (!isset($_GET['api_source']) || $_GET['api_source'] === 'auto') ? 'checked' : '' ?>>
-              <span>Auto (Default)</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
-              <input type="radio" name="api_source" value="anilist" <?= (isset($_GET['api_source']) && $_GET['api_source'] === 'anilist') ? 'checked' : '' ?>>
-              <span>Anilist</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
-              <input type="radio" name="api_source" value="jikan" <?= (isset($_GET['api_source']) && $_GET['api_source'] === 'jikan') ? 'checked' : '' ?>>
-              <span>Jikan</span>
-            </label>
-          </div>
-        </div>
-      </div>
+    <div class="container">
+    <h1>Manga zoeken</h1>
+    <form method="GET" style="display: flex; gap: 10px; align-items: center; margin-bottom: 20px;">
+      <input type="text" name="q" placeholder="Titel..." value="<?= htmlspecialchars($query) ?>" required style="flex-grow: 1;">
+      <label style="margin-bottom: 0;">
+        Aantal:
+        <input type="number" name="limit" min="1" max="20" value="<?= $limit ?>" style="width: 60px;">
+      </label>
+      <button type="submit" class="btn btn-sm">Zoeken</button>
     </form>
-    
-    <?php if (!empty($searchError)): ?>
-      <div style="background: #ffebeb; color: #c62828; padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
-        <p style="margin: 0;"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($searchError) ?></p>
-      </div>
-    <?php endif; ?>
-    
-    <?php if (!empty($searchResults)): ?>
-      <h2>Search Results</h2>
-      <p class="section-subtitle">Found <?= count($searchResults) ?> manga titles matching "<?= htmlspecialchars($searchTerm) ?>"</p>
-      
-      <div class="manga-results">
-        <?php foreach ($searchResults as $manga): ?>          <div class="manga-result">
-            <img src="<?= htmlspecialchars(isset($manga['images']['jpg']['image_url']) ? $manga['images']['jpg']['image_url'] : 'assets/images/no-cover.png') ?>" alt="<?= htmlspecialchars($manga['title']) ?>" class="manga-cover">
+
+<?php if ($error): ?>
+  <p style="color:red;"><?= htmlspecialchars($error) ?></p>
+<?php endif; ?>
+
+<?php if ($query !== ''): ?>
+  <p>Resultaten voor <strong><?= htmlspecialchars($query) ?></strong> (max <?= $limit ?>)</p>
+
+  <?php if (count($data) > 0): ?>    <div class="search-results">
+      <?php foreach ($data as $m): ?>
+        <div class="search-result">
+          <img src="<?= htmlspecialchars($m['images']['jpg']['image_url'] ?? 'assets/images/no-cover.png') ?>" 
+               alt="Cover" class="search-result-image">
+          <div class="search-result-content">
+            <h3 class="manga-title"><?= htmlspecialchars($m['title'] ?? '–') ?></h3>
+            <p class="manga-chapter"><strong>Hoofdstukken:</strong> <?= htmlspecialchars($m['chapters'] ?: '?') ?></p>
+            <p><strong>Score:</strong> <?= htmlspecialchars($m['score'] ?: '?') ?></p>
+            <p class="manga-description"><?= htmlspecialchars(mb_strimwidth($m['synopsis'] ?? '', 0, 120, '…')) ?></p>
             
-            <div class="manga-info">              <h3 class="manga-title">
-                <?= htmlspecialchars($manga['title']) ?>
-                <?php if (!empty($manga['api_source'])): ?>
-                  <span class="api-badge <?= htmlspecialchars($manga['api_source']) ?>"><?= htmlspecialchars(ucfirst($manga['api_source'])) ?></span>
-                <?php endif; ?>
-              </h3>
-              
-              <div class="manga-meta">
-                <span><i class="fas fa-star"></i> <?= number_format(isset($manga['score']) ? $manga['score'] : 0, 1) ?>/10</span>
-                <?php if (!empty($manga['chapters'])): ?>
-                  <span><i class="fas fa-book-open"></i> <?= $manga['chapters'] ?> chapters</span>
-                <?php endif; ?>
-                <?php if (!empty($manga['published']['string'])): ?>
-                  <span><i class="far fa-calendar-alt"></i> <?= htmlspecialchars($manga['published']['string']) ?></span>
-                <?php endif; ?>
-              </div>
-              
-              <?php if (!empty($manga['genres'])): ?>
-                <div class="manga-genres">
-                  <?php foreach (array_slice($manga['genres'], 0, 5) as $genre): ?>
-                    <span class="manga-genre"><?= htmlspecialchars($genre['name']) ?></span>
-                  <?php endforeach; ?>
-                </div>
-              <?php endif; ?>
-              
-              <div class="manga-description">
-                <?= !empty($manga['synopsis']) ? htmlspecialchars($manga['synopsis']) : 'No description available.' ?>
-              </div>
-                <div class="manga-actions">
-                <?php if (!empty($_SESSION['user_id'])): ?>                  <form method="post">
-                    <input type="hidden" name="action" value="add_from_api">
-                    <input type="hidden" name="title" value="<?= htmlspecialchars($manga['title']) ?>">
-                    <input type="hidden" name="image" value="<?= htmlspecialchars(isset($manga['images']['jpg']['image_url']) ? $manga['images']['jpg']['image_url'] : '') ?>">
-                    <input type="hidden" name="description" value="<?= htmlspecialchars(isset($manga['synopsis']) ? $manga['synopsis'] : '') ?>">
-                    <input type="hidden" name="chapter" value="1">
-                    <input type="hidden" name="api_id" value="<?= htmlspecialchars(isset($manga['api_id']) ? $manga['api_id'] : '') ?>">
-                    <input type="hidden" name="api_source" value="<?= htmlspecialchars(isset($manga['api_source']) ? $manga['api_source'] : '') ?>">
-                    <button type="submit" class="btn"><i class="fas fa-plus"></i> Add to My Collection</button>
-                  </form>
-                <?php else: ?>
-                  <a href="login.php" class="btn"><i class="fas fa-sign-in-alt"></i> Login to Add</a>
-                <?php endif; ?>
-              </div>
-            </div>
+            <?php if (!empty($_SESSION['user_id'])): ?>
+            <form method="POST" class="search-result-actions">
+              <input type="hidden" name="action" value="bookmark">
+              <input type="hidden" name="api_id" value="<?= htmlspecialchars($m['mal_id'] ?? '') ?>">
+              <input type="hidden" name="title" value="<?= htmlspecialchars($m['title'] ?? '') ?>">
+              <input type="hidden" name="chapters" value="<?= htmlspecialchars($m['chapters'] ?? '0') ?>">
+              <input type="hidden" name="max_chapters" value="<?= htmlspecialchars($m['chapters'] ?? '') ?>">
+              <input type="hidden" name="cover" value="<?= htmlspecialchars($m['images']['jpg']['image_url'] ?? '') ?>">
+              <input type="hidden" name="synopsis" value="<?= htmlspecialchars($m['synopsis'] ?? '') ?>">
+              <button type="submit" class="btn btn-sm">
+                <i class="fas fa-bookmark"></i> Bookmark toevoegen
+              </button>
+            </form>
+            <?php else: ?>
+            <p class="search-result-actions" style="font-size: 0.9rem;">
+              <a href="login.php?redirect=browse.php?q=<?= urlencode($query) ?>&limit=<?= $limit ?>">Log in</a> om toe te voegen aan je collectie
+            </p>
+            <?php endif; ?>
           </div>
-        <?php endforeach; ?>
-      </div>
-    <?php elseif (!empty($searchTerm)): ?>
-      <div style="text-align: center; padding: 3rem 0;">
-        <i class="fas fa-search" style="font-size: 3rem; color: var(--gray); margin-bottom: 1rem;"></i>
-        <h3>No results found</h3>
-        <p>Try searching with different keywords or check your spelling.</p>
-      </div>
-    <?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php else: ?>
+    <p>Geen manga gevonden.</p>  <?php endif; ?>
+<?php endif; ?>
+
+<?php if (isset($success_message)): ?>
+  <div style="background: #d4edda; color: #155724; padding: 0.75rem; border-radius: 4px; margin-top: 1.5rem;">
+    <?= htmlspecialchars($success_message) ?>
   </div>
-  
-  <?php include __DIR__.'/footer.php'; ?>
+<?php endif; ?>
+</div> <!-- /.container -->
+
+<?php include __DIR__.'/footer.php'; ?>
 </body>
 </html>

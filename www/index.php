@@ -1,14 +1,10 @@
-<?php require_once __DIR__.'/config/config.php'; 
+<?php 
+require_once __DIR__.'/config/config.php';
+// Include the manga utility functions
+require_once __DIR__.'/utils/manga_utils.php';
 
-// Get popular manga (aggregated, no personal information exposed)
-$popularStmt = $pdo->query("
-  SELECT manga_title, COUNT(*) as bookmark_count 
-  FROM bookmarks 
-  GROUP BY manga_title 
-  ORDER BY bookmark_count DESC, manga_title ASC
-  LIMIT 3
-");
-$popularManga = $popularStmt->fetchAll();
+// Get popular manga with cover images
+$popularManga = getPopularMangaWithCovers($pdo, 3);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -62,21 +58,25 @@ $popularManga = $popularStmt->fetchAll();
     </div>
     
     <h2 class="mt-2">Popular Manga</h2>
-    <p class="section-subtitle">Most bookmarked titles by our community</p>
-    <div class="card-grid">
-      <?php foreach($popularManga as $manga): 
-        // Create URL-friendly manga title for placeholder image
-        $imgText = urlencode(str_replace(' ', '+', $manga['manga_title']));
-      ?>
+    <p class="section-subtitle">Most bookmarked titles by our community</p>    <div class="card-grid">
+      <?php foreach($popularManga as $manga): ?>
       <div class="card">
-        <img src="https://via.placeholder.com/400x250?text=<?= $imgText ?>" alt="<?= htmlspecialchars($manga['manga_title']) ?>" class="card-img">
+        <?php if(!empty($manga['cover_image'])): ?>
+          <img src="<?= htmlspecialchars($manga['cover_image']) ?>" class="card-img" alt="<?= htmlspecialchars($manga['manga_title']) ?> cover">
+        <?php else: ?>
+          <?php 
+            // Fallback to placeholder if no image found
+            $imgText = urlencode(str_replace(' ', '+', $manga['manga_title']));
+          ?>
+          <img src="https://via.placeholder.com/400x250?text=<?= $imgText ?>" class="card-img">
+        <?php endif; ?>
         <div class="card-body">
           <h3 class="card-title"><?= htmlspecialchars($manga['manga_title']) ?></h3>
           <p class="card-text">
             <i class="fas fa-bookmark"></i> <?= $manga['bookmark_count'] ?> reader<?= $manga['bookmark_count'] > 1 ? 's' : '' ?> tracking this manga
           </p>
           <?php if (!empty($_SESSION['user_id'])): ?>
-          <a href="manga.php" class="btn btn-sm">Track This Manga</a>
+          <a href="manga.php?title=<?= urlencode($manga['manga_title']) ?>" class="btn btn-sm">Track This Manga</a>
           <?php else: ?>
           <a href="register.php" class="btn btn-sm">Sign Up to Track</a>
           <?php endif; ?>
