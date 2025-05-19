@@ -205,7 +205,8 @@ if (isset($_GET['success'])) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= htmlspecialchars($manga['manga_title']) ?> - Manga Tracker</title>  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <link rel="stylesheet" href="assets/css/style.css">
-  <link rel="stylesheet" href="assets/css/style-fixes.css">  <style>
+  <link rel="stylesheet" href="assets/css/style-fixes.css">
+  <link rel="stylesheet" href="assets/css/responsive.css">  <style>
     .manga-header {
       display: flex;
       align-items: flex-start;
@@ -438,8 +439,7 @@ if (isset($_GET['success'])) {
         margin-bottom: 10px;
       }
     }</style>
-  <script>
-    // Function to toggle chapter status with AJAX
+  <script>    // Function to toggle chapter status with AJAX
     function toggleChapterStatus(chapterId, chapterNumber, currentStatus) {
       // Get the form elements
       const form = document.getElementById('chapter-form-' + chapterId);
@@ -459,13 +459,13 @@ if (isset($_GET['success'])) {
       formData.append('chapter_number', chapterNumber);
       formData.append('status', newStatus);
       formData.append('ajax', '1'); // Add flag to indicate AJAX request
-      
-      // Send AJAX request
+        // Send AJAX request
       fetch('manga_detail.php?id=<?= $bookmark_id ?>', {
         method: 'POST',
         body: formData
       })
-      .then(response => response.json())      .then(data => {
+      .then(response => response.json())
+      .then(data => {
         if (data.success) {
           // Toggle appearance based on new status returned from server
           if (data.is_read) {
@@ -495,8 +495,7 @@ if (isset($_GET['success'])) {
                 chapterBtn.appendChild(dateDiv);
               }
               dateDiv.textContent = data.read_date_formatted;
-            }
-          } else {
+            }          } else {
             // Mark as unread
             chapterBox.classList.remove('chapter-read');
             chapterBox.classList.add('chapter-unread');
@@ -513,6 +512,12 @@ if (isset($_GET['success'])) {
               dateDiv.remove();
             }
           }
+          
+          // Update currentStatus for the next click
+          // This line ensures that if you click again, it correctly toggles even without reload
+          document.getElementById('chapter-form-' + chapterId).setAttribute('onsubmit', 
+            `return toggleChapterStatus('${chapterId}', '${chapterNumber}', '${data.is_read ? '1' : '0'}')`
+          );
           
           // Show a temporary success notification
           showNotification(data.message);
@@ -558,9 +563,8 @@ if (isset($_GET['success'])) {
 <body>
   <?php include __DIR__.'/header.php'; ?>
   
-  <div class="container">
-    <a href="manga.php" class="btn btn-sm" style="margin-bottom: 20px;">
-      <i class="fas fa-arrow-left"></i> Terug naar collectie
+  <div class="container">    <a href="manga.php" class="btn btn-sm" style="margin-bottom: 20px;">
+      <i class="fas fa-arrow-left"></i> Back to collection
     </a>
     
     <?php if(isset($success_message)): ?>
@@ -596,15 +600,14 @@ if (isset($_GET['success'])) {
             <div>
               <p><strong>Laatste hoofdstuk gelezen:</strong> <?= htmlspecialchars($manga['last_chapter']) ?></p>
               <p><strong>Maximum hoofdstukken:</strong> <?= $manga['max_chapters'] ? htmlspecialchars($manga['max_chapters']) : 'Niet ingesteld' ?></p>
-            </div>
-            <div>
-              <p><strong>Toegevoegd op:</strong> <?= date('d-m-Y', strtotime($manga['created_at'])) ?></p>
-              <p><strong>Laatste update:</strong> <?= date('d-m-Y', strtotime($manga['updated_at'])) ?></p>
+            </div>            <div>
+              <p><strong>Added on:</strong> <?= date('d-m-Y', strtotime($manga['created_at'])) ?></p>
+              <p><strong>Last updated:</strong> <?= date('d-m-Y', strtotime($manga['updated_at'])) ?></p>
             </div>
           </div>
-        </div>          <?php if(!empty($manga['description'])): ?>
+        </div>        <?php if(!empty($manga['description'])): ?>
           <div class="manga-description">
-            <h3><i class="fas fa-book-open"></i> Beschrijving</h3>
+            <h3><i class="fas fa-book-open"></i> Description</h3>
             <div class="description-content">
               <?= nl2br(htmlspecialchars($manga['description'])) ?>
             </div>
@@ -613,18 +616,17 @@ if (isset($_GET['success'])) {
         
         <?php if(!empty($manga['notes'])): ?>
           <div class="manga-notes">
-            <h3><i class="fas fa-sticky-note"></i> Notities</h3>
+            <h3><i class="fas fa-sticky-note"></i> Notes</h3>
             <div class="notes-content">
               <?= nl2br(htmlspecialchars($manga['notes'])) ?>
             </div>
           </div>
-        <?php endif; ?>          <div class="chapter-actions">
-            <div class="actions-container">
-              <form method="post" class="set-max-form">
+        <?php endif; ?><div class="chapter-actions">
+            <div class="actions-container">              <form method="post" class="set-max-form">
                 <input type="hidden" name="action" value="update_max">
-                <label for="max_chapters">Max hoofdstukken:</label>
+                <label for="max_chapters">Max chapters:</label>
                 <input type="number" id="max_chapters" name="max_chapters" value="<?= $manga['max_chapters'] ?? '' ?>" min="1" required>
-                <button type="submit" class="btn btn-sm"><i class="fas fa-save"></i> Bijwerken</button>
+                <button type="submit" class="btn btn-sm"><i class="fas fa-save"></i> Update</button>
               </form>
               
               <a href="find_manga.php?id=<?= $bookmark_id ?>" class="btn btn-sm btn-find-manga">
@@ -634,9 +636,9 @@ if (isset($_GET['success'])) {
           </div>
       </div>
     </div>      <div class="chapter-heading">
-        <h2>Hoofdstukken</h2>
+        <h2>Chapters</h2>
         <div class="chapter-info">
-          <p>Klik op een hoofdstuk om het als gelezen/ongelezen te markeren.</p>
+          <p>Click on a chapter to mark it as read/unread.</p>
         </div>
       </div>
       
@@ -660,9 +662,8 @@ if (isset($_GET['success'])) {
             <input type="hidden" name="action" value="mark_chapter">
             <input type="hidden" name="chapter_number" value="<?= $i ?>">
             <!-- "status" value is what we want to change TO, not current status -->
-            <input type="hidden" id="status-<?= $chapter_id ?>" name="status" value="<?= $is_read ? 'unread' : 'read' ?>">            <button id="chapter-btn-<?= $chapter_id ?>" type="submit">              
-              <div class="chapter-title">
-                Hoofdstuk <?= $i ?>
+            <input type="hidden" id="status-<?= $chapter_id ?>" name="status" value="<?= $is_read ? 'unread' : 'read' ?>">            <button id="chapter-btn-<?= $chapter_id ?>" type="submit">                <div class="chapter-title">
+                Chapter <?= $i ?>
                 <?php if($is_read): ?>
                   <i class="fas fa-check-circle" style="margin-left: 4px; font-size: 0.8em; color: #28a745;"></i>
                 <?php endif; ?>
@@ -671,9 +672,116 @@ if (isset($_GET['success'])) {
                 <div id="date-<?= $chapter_id ?>" class="read-date"><?= date('d-m-Y', strtotime($read_date)) ?></div>
               <?php endif; ?>
             </button>
-          </form>
-        </div>
+          </form>        </div>
       <?php endfor; ?>
+    </div>
+    
+    <!-- Comments Section -->
+    <div class="section" style="margin-top: 30px;">
+      <h2 class="section-title"><i class="fas fa-comments"></i> Comments</h2>
+      
+      <?php
+      // Get comments for this manga
+      $commentStmt = $pdo->prepare("
+        SELECT c.*, u.username 
+        FROM comments c
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE c.bookmark_id = ?
+        ORDER BY c.created_at DESC
+      ");
+      $commentStmt->execute([$bookmark_id]);
+      $comments = $commentStmt->fetchAll();
+      
+      // Process comment submission
+      if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_comment') {
+        $commentContent = trim($_POST['comment']);
+        $name = !empty($_SESSION['username']) ? $_SESSION['username'] : trim($_POST['name']);
+        
+        if (empty($commentContent)) {
+          echo '<div class="alert alert-error">Comment cannot be empty!</div>';
+        } else if (empty($name) && empty($_SESSION['user_id'])) {
+          echo '<div class="alert alert-error">Please enter your name!</div>';
+        } else {
+          try {
+            $stmt = $pdo->prepare("
+              INSERT INTO comments (bookmark_id, user_id, name, content) 
+              VALUES (?, ?, ?, ?)
+            ");
+            $stmt->execute([
+              $bookmark_id,
+              isset($_SESSION['user_id']) ? $_SESSION['user_id'] : null,
+              $name,
+              $commentContent
+            ]);
+            
+            // Redirect to prevent resubmission on refresh
+            header("Location: manga_detail.php?id=$bookmark_id&comment_added=1");
+            exit;
+          } catch (PDOException $e) {
+            echo '<div class="alert alert-error">Error adding comment: ' . htmlspecialchars($e->getMessage()) . '</div>';
+          }
+        }
+      }
+      
+      // Show success message
+      if (isset($_GET['comment_added'])) {
+        echo '<div class="alert alert-success">Your comment has been added!</div>';
+      }
+      ?>
+      
+      <!-- Comment form -->
+      <div class="comment-form-container" style="margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 8px;">
+        <form method="post" action="">
+          <input type="hidden" name="action" value="add_comment">
+          
+          <?php if (empty($_SESSION['user_id'])): ?>
+            <div style="margin-bottom: 15px;">
+              <label for="name">Your Name:</label>
+              <input type="text" id="name" name="name" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+          <?php endif; ?>
+          
+          <div style="margin-bottom: 15px;">
+            <label for="comment">Your Comment:</label>
+            <textarea id="comment" name="comment" required style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 100px;"></textarea>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-paper-plane"></i> Post Comment
+          </button>
+        </form>
+      </div>
+      
+      <!-- Comments list -->
+      <div class="comments-list">
+        <?php if (count($comments) > 0): ?>
+          <?php foreach ($comments as $comment): ?>
+            <div class="comment-item" style="margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+              <div class="comment-header" style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <div class="comment-author" style="font-weight: bold;">
+                  <?php if ($comment['user_id']): ?>
+                    <i class="fas fa-user"></i> <?= htmlspecialchars($comment['username']) ?>
+                  <?php else: ?>
+                    <i class="fas fa-user-circle"></i> <?= htmlspecialchars($comment['name']) ?>
+                  <?php endif; ?>
+                </div>
+                <div class="comment-date" style="color: #666; font-size: 0.9em;">
+                  <?= date('F j, Y g:i a', strtotime($comment['created_at'])) ?>
+                </div>
+              </div>
+              
+              <div class="comment-content" style="line-height: 1.5;">
+                <?= nl2br(htmlspecialchars($comment['content'])) ?>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <div style="text-align: center; padding: 20px; color: #666;">
+            <i class="far fa-comments" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+            <p>No comments yet. Be the first to comment!</p>
+          </div>
+        <?php endif; ?>
+      </div>
     </div>
     </div>
   

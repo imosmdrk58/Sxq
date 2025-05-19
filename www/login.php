@@ -13,8 +13,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
   $p = $_POST['password'];
   $stmt = $pdo->prepare("SELECT * FROM users WHERE username=?");
   $stmt->execute([$u]);
-  $user = $stmt->fetch();
-  if ($user && password_verify($p,$user['password_hash'])) {
+  $user = $stmt->fetch();  if ($user && password_verify($p,$user['password_hash'])) {
     // Clear any existing session data
     $_SESSION = array();
     
@@ -25,6 +24,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $_SESSION['user_id'] = $user['id'];
     $_SESSION['username'] = $user['username'];
     
+    // Set admin status if applicable
+    if (isset($user['is_admin']) && $user['is_admin'] == 1) {
+      $_SESSION['is_admin'] = 1;
+    }
     // Handle redirection
     $redirect = isset($_SESSION['redirect_after_login']) ? $_SESSION['redirect_after_login'] : 'manga.php';
     unset($_SESSION['redirect_after_login']);
@@ -41,9 +44,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login – Manga Tracker</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <title>Login – Manga Tracker</title>  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style-fixes.css">
+  <link rel="stylesheet" href="assets/css/responsive.css">
 </head>
 <body>
   <?php include __DIR__.'/header.php'; ?>

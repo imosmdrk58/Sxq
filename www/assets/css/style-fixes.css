@@ -34,6 +34,45 @@
   margin-top: 2rem;
 }
 
+/* Desktop layout fixes */
+@media (min-width: 769px) {  /* Ensure desktop header maintains proper layout */
+  header .container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 1rem; /* Reduced vertical padding to match style.css */
+  }
+    /* Ensure proper logo size */
+  header .logo img {
+    height: 40px; /* Slightly smaller logo to match style.css */
+  }
+  
+  /* Push navigation menu to the right */
+  header .main-nav {
+    margin-left: auto;
+  }
+  
+  /* Add extra space between logo and menu */
+  header .logo {
+    margin-right: 3rem;
+  }
+  
+  /* Fix desktop navigation */
+  header nav {
+    display: flex;
+    gap: 1.2rem;
+    max-height: none;
+    overflow: visible;
+  }
+  
+  /* Ensure containers maintain desktop styling */
+  .container {
+    max-width: 1140px;
+    margin: 2rem auto;
+    padding: 1.5rem;
+  }
+}
+
 .manga-item {
   background: white;
   border-radius: 8px;
